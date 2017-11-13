@@ -1,88 +1,110 @@
 /*
-  SD card datalogger
+    Arduino Game Death Logger
 
- This example shows how to log data from three analog sensors
- to an SD card using the SD library.
-
- The circuit:
- * analog sensors on analog ins 0, 1, and 2
- * SD card attached to SPI bus as follows:
- ** MOSI - pin 11
- ** MISO - pin 12
- ** CLK - pin 13
- ** CS - pin 4 (for MKRZero SD: SDCARD_SS_PIN)
-
- created  24 Nov 2010
- modified 9 Apr 2012
- by Tom Igoe
-
- This example code is in the public domain.
-
- */
-
-#include <SPI.h>
+    by Timm Meiwes
+*/
 #include <SD.h>
-#include <Wire.h> 
+#include <SPI.h>
+#include <DS3231.h>
+#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <PinChangeInt.h>
+
 
 // Set the LCD address to 0x27 for a 16 chars and 2 line display
 LiquidCrystal_I2C lcd(0x27, 16, 2);
+File myFile;
+DS3231  rtc(SDA, SCL);
+int pinCS = 9; // ChipSelect für die SD Karte
 
-const int chipSelect = 9;
+//Variables
+volatile boolean store = false;
+volatile boolean changeGame = true;
+volatile int counter = 0;
 
-void setup()
-{
-   // Open serial communications and wait for port to open:
+//Files 
+String logFile = "all.txt";
+String myFiles [] = {"fo4.txt", "test.txt", "deusEx.txt", "DarkS3.txt", "Sky.txt", "ShOM.txt", "DisH2.txt"};
+String myGames [] = {"FallOut 4", "Test", "DeusEx", "Dark Souls 3", "Skyrim", "Shadow of Mordor", "Dishonored 2"};
+
+//DeathNumbers
+int totalDeath = 0;
+int totalGameDeath = 0;
+int todaysDeath = 0;
+
+//ScreenPositions
+int all = 0;
+int other = 9; 
+
+
+int myFilesLength = sizeof(myFiles) / sizeof(String);
+int acctGame = counter;
+
+void setup() {
+
   Serial.begin(9600);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-
-
-  Serial.print("Initializing SD card...");
-
-  // see if the card is present and can be initialized:
-  if (!SD.begin(chipSelect)) {
-    Serial.println("Card failed, or not present");
-    // don't do anything more:
-    return;
-  }
-  Serial.println("card initialized.");
+  pinMode(pinCS, OUTPUT);
+  pinMode(3, INPUT);
+  pinMode(2, INPUT);
+  pinMode(4, INPUT);
+  digitalWrite(4, HIGH);
   
+
   // initialize the LCD
   lcd.begin();
-
   // Turn on the blacklight and print a message.
   lcd.backlight();
-  lcd.print("Hello, world!");
-}
+  lcd.clear();
 
-void loop()
-{
-     // make a string for assembling the data to log:
-  String dataString = "";
-/*  // read three sensors and append to the string:
-  for (int analogPin = 0; analogPin < 3; analogPin++) {
-    int sensor = analogRead(analogPin);
-    dataString += String(sensor);
-    if (analogPin < 2) {
-      dataString += ",";
+  // SD Card Initialization
+  if (SD.begin())
+  {
+    lcd.println("SD card is ready to use.");
+  } else
+  {
+    lcd.println("Card init failed");
+    delay(1000);
+    return;
+  }
+  rtc.begin();
+
+  attachInterrupt(0, gameDown, RISING);
+  attachPinChangeInterrupt(6, gameUp, RISING);
+  attachPinChangeInterrupt(4, save, RISING);
+
+
+  //Prüfe ob alle nötigen Files da sind, sonst lege sie an
+  //Serial.println("Init");
+  int files = 0;
+ 
+  for ( int i = 0 ; i < myFilesLength ; i++) {
+    File openTest = SD.open(myFiles[i], FILE_WRITE);
+    if (openTest) {
+    
+      openTest.close(); // close the file
+    //  Serial.println(myFiles[i]);
+      files ++;
+    }
+    // if the file didn't open, print an error:
+    else {
+      lcd.clear();
+      lcd.print("error opening " + myFiles[i]);
     }
   }
-
-  // open the file. note that only one file can be open at a time,
-  // so you have to close this one before opening another.
-  File dataFile = SD.open("datalog.txt", FILE_WRITE);
-
-  // if the file is available, write to it:
-  if (dataFile) {
-    dataFile.println(dataString);
-    dataFile.close();
-    // print to the serial port too:
-    Serial.println(dataString);
+  if (!files == myFilesLength) {
+    //Serial.println("ERROR");
+    lcd.println("ERROR");
+  } else {
+    //Serial.println("init okay");
+    lcd.setCursor(0, 1);
+    lcd.print("Ready");
   }
-  // if the file isn't open, pop up an error:
-  else {
-    Serial.println("error opening datalog.txt");
-  }*/
+
+  delay(10000);
 }
+
+
+
+
+
+
